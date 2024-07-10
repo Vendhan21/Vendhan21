@@ -1,0 +1,142 @@
+//@version=5
+indicator("VMA Levels by Vendhan", overlay=true)
+
+// Input options
+showNextDayBullishPivot = input.bool(true, "Show Next Day Bullish Pivot")
+showNextDayBearishPivot = input.bool(true, "Show Next Day Bearish Pivot")
+showNextDayBULevels = input.bool(true, "Show Next Day Bullish Levels")
+showNextDayBELevels = input.bool(true, "Show Next Day Bearish Levels")
+showHistory = input.bool(false, "Show History of Pivot Points")
+daysBack = input.int(30, "Number of Days to Plot", minval=1, maxval=365)
+
+// Determine the appropriate period for pivot calculations
+getPivotTimeframe() =>
+    if (timeframe.isintraday and timeframe.multiplier <= 15)
+        "D"
+    else if (timeframe.period == "60")
+        "W"
+    else if (timeframe.period == "D")
+        "M"
+    else if (timeframe.period == "W")
+        "12M"
+    else
+        "D"
+
+pivotTimeframe = getPivotTimeframe()
+
+// Pre-calculate historical data
+var float[] histHighs = array.new_float(daysBack + 1, 0)
+var float[] histLows = array.new_float(daysBack + 1, 0)
+var float[] histCloses = array.new_float(daysBack + 2, 0)
+
+// Request historical data outside of any loop
+for i = 0 to daysBack
+    array.set(histHighs, i,request.security(syminfo.tickerid, pivotTimeframe, high[i]))
+    array.set(histLows, i, request.security(syminfo.tickerid, pivotTimeframe, low[i]))
+    array.set(histCloses, i, request.security(syminfo.tickerid, pivotTimeframe, close[i]))
+array.set(histCloses, daysBack + 1, request.security(syminfo.tickerid, pivotTimeframe, close[daysBack + 1]))
+
+// Calculate current pivot points and levels
+[pivotHigh, pivotLow, pivotClose] = request.security(syminfo.tickerid, pivotTimeframe, [high[1], low[1], close[1]])
+prevClose = request.security(syminfo.tickerid, pivotTimeframe, close[2])
+
+calcPivots(h, l, c, pc) =>
+    cd = math.abs(c - pc)
+    pp = (h + l + c + c + cd) / 4
+    bp = pp
+    bep = pp - math.abs(h - l) * (1.1 / 3.5)
+    [bp, bep]
+
+[bullishPivot, bearishPivot] = calcPivots(pivotHigh, pivotLow, pivotClose, prevClose)
+
+calcLevel(pivot, mult) =>
+    pivot + math.abs(pivotHigh - pivotLow) * (1.1 / mult)
+
+BU1 = calcLevel(bullishPivot, 6.18)
+BU2 = calcLevel(bullishPivot, 3.82)
+BU3 = calcLevel(bullishPivot, 2.36)
+BU4 = calcLevel(bullishPivot, 1.618)
+BU5 = calcLevel(bullishPivot, 1.382)
+BU6 = calcLevel(bullishPivot, 1)
+
+BE1 = calcLevel(bearishPivot, -6.18)
+BE2 = calcLevel(bearishPivot, -3.82)
+BE3 = calcLevel(bearishPivot, -2.36)
+BE4 = calcLevel(bearishPivot, -1.618)
+BE5 = calcLevel(bearishPivot, -1.382)
+BE6 = calcLevel(bearishPivot, -1)
+
+// Pre-calculate historical pivots
+var float[] histBullishPivots = array.new_float(daysBack, 0)
+var float[] histBearishPivots = array.new_float(daysBack, 0)
+
+for i = 0 to daysBack - 1
+    h = array.get(histHighs, i + 1)
+    l = array.get(histLows, i + 1)
+    c = array.get(histCloses, i + 1)
+    pc = array.get(histCloses, i + 2)
+    [bp, bep] = calcPivots(h, l, c, pc)
+    array.set(histBullishPivots, i, bp)
+    array.set(histBearishPivots, i, bep)
+
+// Function to create or update a line
+updateLine(id, y, color, show, x1, x2) =>
+    if show
+        if na(id)
+            line.new(x1=x1, y1=y, x2=x2, y2=y, color=color, extend=extend.right)
+        else
+            line.set_xy1(id, x1, y)
+            line.set_xy2(id, x2, y)
+            id
+    else
+        if not na(id)
+            line.delete(id)
+        na
+
+// Initialize line arrays for historical pivots
+var line[] histBullishLines = array.new_line()
+var line[] histBearishLines = array.new_line()
+
+// Update lines on every bar
+if barstate.islast
+    startIndex = bar_index - math.min(bar_index, daysBack * 24 * 60 / timeframe.multiplier)
+    
+    // Current period lines
+    updateLine(line.new(na, na, na, na), bullishPivot, color.yellow, showNextDayBullishPivot, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), bearishPivot, color.white, showNextDayBearishPivot, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BU1, color.yellow, showNextDayBULevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BU2, color.yellow, showNextDayBULevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BU3, color.yellow, showNextDayBULevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BU4, color.white, showNextDayBULevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BU5, color.white, showNextDayBULevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BU6, color.white, showNextDayBULevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BE1, color.white, showNextDayBELevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BE2, color.white, showNextDayBELevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BE3, color.white, showNextDayBELevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BE4, color.yellow, showNextDayBELevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BE5, color.yellow, showNextDayBELevels, startIndex, bar_index)
+    updateLine(line.new(na, na, na, na), BE6, color.yellow, showNextDayBELevels, startIndex, bar_index)
+    
+    // Historical pivot points
+    if showHistory
+        for i = 0 to daysBack - 1
+            t = time[i]
+            nextT = t + timeframe.in_seconds(pivotTimeframe)
+            
+            bp = array.get(histBullishPivots, i)
+            bep = array.get(histBearishPivots, i)
+            
+            bpLine = line.new(x1=t, y1=bp, x2=nextT, y2=bp, color=color.new(color.yellow, 70))
+            bepLine = line.new(x1=t, y1=bep, x2=nextT, y2=bep, color=color.new(color.white, 70))
+            
+            array.push(histBullishLines, bpLine)
+            array.push(histBearishLines, bepLine)
+            
+            // Remove old lines if array is too long
+            if array.size(histBullishLines) > daysBack
+                line.delete(array.shift(histBullishLines))
+                line.delete(array.shift(histBearishLines))
+
+// Plot current pivot points
+plot(showNextDayBullishPivot ? bullishPivot : na, "Bullish Pivot", color=color.yellow, linewidth=2)
+plot(showNextDayBearishPivot ? bearishPivot : na, "Bearish Pivot", color=color.white, linewidth=2)
